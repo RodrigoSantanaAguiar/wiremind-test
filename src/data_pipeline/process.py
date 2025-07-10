@@ -9,7 +9,25 @@ def load_data(path: str) -> pd.DataFrame:
     :param path: Path to the parquet file
     :return: A pandas DataFrame
     """
+    #TODO: add logs and try-except blocks
+    logging.info(f"Loading data from {path}...")
     return pd.read_parquet(path)
+
+
+def filter_confirmed_tickets(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Filter confirmed tickets from the dataframe.
+    :param df: Raw dataframe containing all tickets.
+    :return: A pandas DataFrame with only confirmed tickets.
+    """
+    logging.info("Filtering confirmed tickets...")
+    filtered_df = df[df['is_confirmed'] == True].copy()
+
+    if filtered_df.empty:
+        logging.warning("No confirmed tickets found.")
+    else:
+        logging.info(f"{filtered_df.shape[0]} confirmed tickets found.")
+    return filtered_df
 
 
 def create_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -41,12 +59,88 @@ def create_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def process_intermediate_chunk(df_chunk: pd.DataFrame) -> pd.DataFrame:
-    pass
+    """
+    Process a chunk of data (e.g., data for a single service) by applying
+    temporal features and performing an intermediate aggregation.
+    :param df_chunk: A dataFrame chunk containing confirmed tickets for one service.
+    :return: A pandas dataFrame with partially aggregated results for the chunk.
+    """
+    if df_chunk.empty:
+        logging.warning("Received an empty chunk, skipping...")
+        return pd.DataFrame()
+
+    logging.info(f"Processing chunk with {df_chunk.shape[0]} tickets...")
+
+    # 1. Create temporal features for this specific chunk
+    df_with_features = create_temporal_features(df_chunk)
+
+    # 2. Define the keys for aggregation
+    grouping_keys = [
+        'od_origin_station_name',
+        'od_destination_station_name',
+        'departure_year',
+        'departure_month',
+        'departure_day',
+        'departure_isoweekday',
+        'timezone',
+        'departure_time'
+    ]
+
+    # 3. Perform the intermediate aggregation.
+    # Calculate counts and sums, which can be safely summed up again later.
+    logging.info("Performing intermediate aggregation on the chunk...")
+    intermediate_agg = df_with_features.groupby(grouping_keys).agg(
+        total_demand=('ticket_key', 'count'),
+        sum_of_prices=('price_vat_inc', 'sum'),
+        ticket_count_for_mean=('price_vat_inc', 'count')
+    ).reset_index()
+
+    return intermediate_agg
 
 
-def aggregate_by_od(df: pd.DataFrame) -> pd.DataFrame:
-    return df.groupby(['origin', 'destination']).agg({
-        'total_demand': 'count',
-        'mean_price': 'sum'
-    }
-    )
+def perform_final_aggregation(df_combined: pd.DataFrame) -> pd.DataFrame:
+    """
+    Receive the combined intermediate results from all chunks and
+    perform the final aggregation to produce the final dataset.
+    :param df_combined: A dataFrame containing the concatenated results from all parallel steps.
+    :return: A pandas dataFrame matching the required output schema.
+    """
+    logging.info(f"Performing final aggregation on {df_combined.shape[0]} intermediate rows...")
+
+    # The grouping keys are the same as before
+    grouping_keys = [
+        'od_origin_station_name',
+        'od_destination_station_name',
+        'departure_year',
+        'departure_month',
+        'departure_day',
+        'departure_isoweekday',
+        'timezone',
+        'departure_time'
+    ]
+
+    # 1. Group the intermediate results and sum the partial sums and counts
+    final_agg = df_combined.groupby(grouping_keys).sum().reset_index()
+
+    # 2. Calculate the final 'mean_price'
+    # Use a small epsilon to avoid division by zero if a count is somehow zero
+    final_agg['mean_price'] = final_agg['sum_of_prices'] / (final_agg['ticket_count_for_mean'] + 1e-9)
+
+    # 3. Select and reorder columns to match the final schema
+    final_schema_columns = [
+        'od_origin_station_name',
+        'od_destination_station_name',
+        'total_demand',
+        'mean_price',
+        'departure_year',
+        'departure_month',
+        'departure_day',
+        'departure_isoweekday',
+        'timezone',
+        'departure_time'
+    ]
+
+    final_df = final_agg[final_schema_columns]
+    logging.info(f"Final dataset created with {final_df.shape[0]} rows.")
+
+    return final_df
