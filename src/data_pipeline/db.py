@@ -36,7 +36,7 @@ def save_to_postgres(df: DataFrame, table_name: str):
             logging.info(f"Cleaning existing table '{table_name}' if any...")
             connection.execute(text(f"DROP TABLE IF EXISTS {table_name};"))
 
-            logging.info(f"Saving {df.shape[0]} rows into '{table_name}'...").
+            logging.info(f"Saving {df.shape[0]} rows into '{table_name}'...")
             df.to_sql(table_name, engine, if_exists='replace', index=False)
 
             result = connection.execute(text(f"SELECT COUNT(*) FROM {table_name};"))
