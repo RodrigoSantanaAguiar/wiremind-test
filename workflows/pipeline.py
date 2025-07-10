@@ -92,3 +92,26 @@ def merge_and_load(intermediate_results: Input[List[pd.DataFrame]]):
     logging.info("Intermediate results merged and saved to Postgres.")
 
 
+with Workflow(
+        generate_name="data-processing-pipeline-",
+        entrypoint="pipeline_steps",
+) as w:
+    with Steps(name="pipeline_steps") as s:
+        # Step 1: Prepare data
+        prepare_task = prepare_data(
+            arguments=[Parameter(name="data_path", value="/mnt/data/cayzn_tickets.parquet")]
+        )
+
+        # Step 2: Parallel processing
+        process_task = process_service(
+            with_param=prepare_task.get_parameter("services_list"),                 # Used for loops
+            arguments={
+                "filtered_data_chunk": prepare_task.get_artifact("filtered_data"),
+                "service_id": "{{item}}",                                           # Get current loop's service_id
+            },
+        )
+
+        # Step 3: Final aggregation
+        merge_and_load(
+            arguments=[process_task.get_artifact("intermediate_agg_artifact")]
+        )
