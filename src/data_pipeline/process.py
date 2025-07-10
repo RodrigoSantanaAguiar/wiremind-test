@@ -9,7 +9,6 @@ def load_data(path: str) -> pd.DataFrame:
     :param path: Path to the parquet file
     :return: A pandas DataFrame
     """
-    #TODO: add logs and try-except blocks
     logging.info(f"Loading data from {path}...")
     return pd.read_parquet(path)
 
@@ -71,10 +70,10 @@ def process_intermediate_chunk(df_chunk: pd.DataFrame) -> pd.DataFrame:
 
     logging.info(f"Processing chunk with {df_chunk.shape[0]} tickets...")
 
-    # 1. Create temporal features for this specific chunk
+    # Create temporal features for this specific chunk
     df_with_features = create_temporal_features(df_chunk)
 
-    # 2. Define the keys for aggregation
+    # Define the keys for aggregation
     grouping_keys = [
         'od_origin_station_name',
         'od_destination_station_name',
@@ -86,7 +85,7 @@ def process_intermediate_chunk(df_chunk: pd.DataFrame) -> pd.DataFrame:
         'departure_time'
     ]
 
-    # 3. Perform the intermediate aggregation.
+    # Perform the intermediate aggregation.
     # Calculate counts and sums, which can be safely summed up again later.
     logging.info("Performing intermediate aggregation on the chunk...")
     intermediate_agg = df_with_features.groupby(grouping_keys).agg(
@@ -107,7 +106,6 @@ def perform_final_aggregation(df_combined: pd.DataFrame) -> pd.DataFrame:
     """
     logging.info(f"Performing final aggregation on {df_combined.shape[0]} intermediate rows...")
 
-    # The grouping keys are the same as before
     grouping_keys = [
         'od_origin_station_name',
         'od_destination_station_name',
@@ -119,14 +117,14 @@ def perform_final_aggregation(df_combined: pd.DataFrame) -> pd.DataFrame:
         'departure_time'
     ]
 
-    # 1. Group the intermediate results and sum the partial sums and counts
+    # Group the intermediate results and sum the partial sums and counts
     final_agg = df_combined.groupby(grouping_keys).sum().reset_index()
 
-    # 2. Calculate the final 'mean_price'
+    # Calculate the final 'mean_price'
     # Use a small epsilon to avoid division by zero if a count is somehow zero
     final_agg['mean_price'] = final_agg['sum_of_prices'] / (final_agg['ticket_count_for_mean'] + 1e-9)
 
-    # 3. Select and reorder columns to match the final schema
+    # Select and reorder columns to match the final schema
     final_schema_columns = [
         'od_origin_station_name',
         'od_destination_station_name',
