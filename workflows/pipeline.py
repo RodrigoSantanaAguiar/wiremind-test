@@ -43,3 +43,26 @@ def prepare_data(data_path: str) -> dict:
     }
 
 
+@script()
+def process_service(filtered_data_chunk: Input[Artifact], service_id: str) -> Output[Artifact]:
+    """
+    Process a single service.
+    :param filtered_data_chunk: The filtered data chunk. This is an artifact (Parquet) and will be automatically loaded.
+    :param service_id: Service ID to process. This is a parameter (JSON) and will be automatically loaded.
+    :return: An artifact (Parquet) with the intermediate results for the service.
+    """
+    from data_pipeline.process import process_intermediate_chunk
+    import pandas as pd
+    import logging
+
+    logging.info(f"Processing service {service_id}...")
+
+    filtered_df = filtered_data_chunk.load()
+
+    service_chunk = filtered_df[filtered_df['service_number'] == int(service_id)]
+
+    intermediate_result = process_intermediate_chunk(service_chunk)
+
+    return intermediate_result
+
+
