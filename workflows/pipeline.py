@@ -2,9 +2,9 @@ import json
 from typing import List
 import pandas as pd
 
-from hera.workflows import Workflow, Steps, script, Input, Output, Parameter, Artifact
+from hera.workflows import Workflow, Steps, script, Input, Output, Parameter, Artifact, Env
 from hera.shared import global_config
-from hera.workflows.models import ImagePullPolicy
+from hera.workflows.models import ImagePullPolicy, ValueFrom
 
 #TODO: replace with actual image name
 IMAGE_NAME = "image"
@@ -112,6 +112,20 @@ with Workflow(
         )
 
         # Step 3: Final aggregation
-        merge_and_load(
-            arguments=[process_task.get_artifact("intermediate_agg_artifact")]
+        merge_task = merge_and_load(
+            arguments=[process_task.get_artifact("result")]
         )
+
+        # Pass out environment variables
+        merge_task.env([
+            {
+                "name": "DB_PASSWORD",
+                "valueFrom": {
+                    "secretKeyRef": {
+                        "name": "postgres-postgresql",
+                        "key": "postgres-password"
+                    }
+                }
+            }
+        ])
+
