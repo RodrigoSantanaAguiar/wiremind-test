@@ -66,3 +66,29 @@ def process_service(filtered_data_chunk: Input[Artifact], service_id: str) -> Ou
     return intermediate_result
 
 
+@script()
+def merge_and_load(intermediate_results: Input[List[pd.DataFrame]]):
+    """
+    Aggregate intermediate results and save to Postgres.
+    :param intermediate_results: Intermediate results to merge and load. This is a list of dataFrames and will be automatically loaded.
+    :return:
+    """
+    from data_pipeline.process import perform_final_aggregation
+    from data_pipeline.db import save_to_postgres
+    import pandas as pd
+    import logging
+
+    logging.info("Merging and saving intermediate results...")
+
+    if not intermediate_results:
+        logging.warning("No intermediate results found, skipping...")
+        return
+
+    combined_df = pd.concat(intermediate_results, ignore_index=True)
+
+    final_df = perform_final_aggregation(combined_df)
+
+    save_to_postgres(final_df, table_name="service_demand_aggregation")
+    logging.info("Intermediate results merged and saved to Postgres.")
+
+
